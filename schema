@@ -1,0 +1,123 @@
+import graphene
+from graphene_django import DjangoObjectType
+from graphql_jwt.decorators import login_required
+import graphql_jwt
+from django.contrib.auth import get_user_model
+from .models import Token
+from django.utils import timezone
+from decimal import Decimal
+
+User = get_user_model()
+
+
+class UserType(DjangoObjectType):
+    class Meta:
+        model = User
+        fields = ('id', 'email', 'name', 'shop_name')
+
+
+class TokenType(DjangoObjectType):
+    class Meta:
+        model = Token
+        fields = '__all__'
+
+# ─── Queries ────────────────────────────────────────────────────────────────
+
+class Query(graphene.ObjectType):
+    me = graphene.Field(UserType)
+    tokens = graphene.List(TokenType)
+
+    @login_required
+    def resolve_me(self, info):
+        return info.context.user
+
+    @login_required
+    def resolve_tokens(self, info):
+        return Token.objects.filter(created_by=info.context.user)
+
+# ─── Mutations ───────────────────────────────────────────────────────────────
+
+class SignupMutation(graphene.Mutation):
+    class Arguments:
+        name = graphene.String(required=True)
+        email = graphene.String(required=True)
+        shop_name = graphene.String(required=True)
+        password = graphene.String(required=True)
+        confirm_password = graphene.String(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+    user = graphene.Field(UserType)
+
+    def mutate(self, info, name, email, shop_name, password, confirm_password):
+        if password != confirm_password:
+            return SignupMutation(success=False, message="Passwords do not match", user=None)
+        if User.objects.filter(email=email).exists():
+            return SignupMutation(success=False, message="Email already registered", user=None)
+        user = User.objects.create_user(
+            email=email,
+            name=name,
+            password=password,
+            shop_name=shop_name
+        )
+        return SignupMutation(success=True, message="Account created successfully", user=user)
+
+class CreateTokenMutation(graphene.Mutation):
+    class Arguments:
+        customer_name = graphene.String(required=True)
+        phone_number = graphene.String(required=True)
+        service = graphene.String(required=True)
+        price = graphene.Float(required=True)
+        scheduled_time = graphene.String(required=True)  # ISO 8601 string
+
+    success = graphene.Boolean()
+    message = graphene.String()
+    token = graphene.Field(TokenType)
+
+    @login_required
+    def mutate(self, info, customer_name, phone_number, service, price, scheduled_time):
+        user = info.context.user
+        # Auto-generate token code T001, T002, ...
+        from django.utils.timezone import now
+
+        today = now().date()
+
+        last_token = Token.objects.filter(
+            created_by=user,
+            created_at__date=today
+        ).order_by('-created_at').first()
+
+        if last_token:
+            last_number = int(last_token.token_code.replace("T", ""))
+            new_number = last_number + 1
+        else:
+            new_number = 1
+
+        token_code = f"T{new_number:03d}"
+
+        from django.utils.dateparse import parse_datetime
+        parsed_time = parse_datetime(scheduled_time)
+        if not parsed_time:
+            return CreateTokenMutation(success=False, message="Invalid scheduled_time format", token=None)
+
+        token = Token.objects.create(
+            token_code=token_code,
+            customer_name=customer_name,
+            phone_number=phone_number,
+            service=service,
+            price=Decimal(price),
+            scheduled_time=parsed_time,
+            created_by=user,
+        )
+        return CreateTokenMutation(success=True, message="Token created", token=token)
+
+
+class Mutation(graphene.ObjectType):
+    signup = SignupMutation.Field()
+    token_auth = graphql_jwt.ObtainJSONWebToken.Field()   # login
+    verify_token = graphql_jwt.Verify.Field()
+    refresh_token = graphql_jwt.Refresh.Field()
+    create_token = CreateTokenMutation.Field()
+
+
+schema = graphene.Schema(query=Query, mutation=Mutation)
