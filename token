@@ -1,0 +1,431 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/graphql_service.dart';
+import 'routes.dart';
+
+class TokenPageScreen extends StatefulWidget {
+  final Map<String, dynamic> serviceData;
+  const TokenPageScreen({super.key, required this.serviceData});
+
+  @override
+  State<TokenPageScreen> createState() => _TokenPageScreenState();
+}
+
+class _TokenPageScreenState extends State<TokenPageScreen>
+    with SingleTickerProviderStateMixin {
+  DateTime? _scheduledTime;
+  bool _loading = false;
+  bool _tokenGenerated = false;
+  String? _tokenCode;
+  late AnimationController _animCtrl;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700));
+    _scaleAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.elasticOut);
+    _animCtrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFF9D4EDD),
+            onPrimary: Colors.white,
+            surface: Color(0xFF1E1B4B),
+            onSurface: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFF9D4EDD),
+            onPrimary: Colors.white,
+            surface: Color(0xFF1E1B4B),
+            onSurface: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (time == null) return;
+
+    setState(() {
+      _scheduledTime = DateTime(
+          date.year, date.month, date.day, time.hour, time.minute);
+    });
+  }
+
+  Future<void> _generateToken() async {
+    if (_scheduledTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Please select a scheduled time'),
+          backgroundColor: Colors.orange));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final res = await GraphQLService.createToken(
+        widget.serviceData['customerName'],
+        widget.serviceData['phoneNumber'],
+        widget.serviceData['service'],
+        widget.serviceData['price'],
+        _scheduledTime!.toIso8601String(),
+      );
+      print("API RESPONSE 👉 $res");  
+      final data = res['data']?['createToken'];
+      if (data != null && data['success'] == true) {
+        setState(() {
+          _tokenCode = data['token']['tokenCode'];
+          
+          _tokenGenerated = true;
+        });
+        _animCtrl.reset();
+        _animCtrl.forward();
+      } else {
+        final msg = data?['message'] ?? 'Failed to generate token';
+        _showErr(msg);
+      }
+    } catch (e) {
+      _showErr('Connection error: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _showErr(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.red));
+  }
+
+  Future<void> _sendWhatsApp() async {
+    final d = widget.serviceData;
+    final name = d['customerName'];
+    final service = d['service'];
+    final price = d['price'];
+    final phone = d['phoneNumber'].replaceAll(RegExp(r'[^0-9]'), '');
+    final timeStr = _scheduledTime != null
+        ? DateFormat('dd MMM yyyy, hh:mm a').format(_scheduledTime!)
+        : 'N/A';
+
+    final message = Uri.encodeComponent(
+      'Hello $name, your token is $_tokenCode for $service at $timeStr. Price: ₹$price',
+    );
+
+    final url = Uri.parse('https://wa.me/91$phone?text=$message');
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      _showErr('Could not open WhatsApp');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.serviceData;
+    final priceFormatted =
+        NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+            .format(d['price']);
+
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF0A0A1A), Color(0xFF0D2137), Color(0xFF0A3D62)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Back + Title
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.arrow_back_ios_new,
+                            color: Colors.white, size: 18),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Text('Token Details',
+                        style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Token badge (shows after generation)
+                if (_tokenGenerated && _tokenCode != null)
+                  ScaleTransition(
+                    scale: _scaleAnim,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 28),
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF9D4EDD), Color(0xFF5A189A)],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF9D4EDD).withOpacity(0.4),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          )
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          const Text('TOKEN NUMBER',
+                              style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 8),
+                          Text(_tokenCode!,
+                              style: const TextStyle(
+                                  fontSize: 52,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 4)),
+                          const SizedBox(height: 4),
+                          const Icon(Icons.check_circle,
+                              color: Colors.greenAccent, size: 28),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Details card
+                _detailsCard(d, priceFormatted),
+                const SizedBox(height: 16),
+
+                // DateTime picker
+                GestureDetector(
+                  onTap: _pickDateTime,
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _scheduledTime != null
+                            ? const Color(0xFF9D4EDD)
+                            : Colors.white.withOpacity(0.2),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF9D4EDD).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.schedule,
+                              color: Color(0xFF9D4EDD), size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Scheduled Time',
+                                style: TextStyle(
+                                    color: Colors.white54, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            Text(
+                              _scheduledTime != null
+                                  ? DateFormat('dd MMM yyyy, hh:mm a')
+                                      .format(_scheduledTime!)
+                                  : 'Tap to select date & time',
+                              style: TextStyle(
+                                  color: _scheduledTime != null
+                                      ? Colors.white
+                                      : Colors.white38,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.chevron_right, color: Colors.white38),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Generate button
+                if (!_tokenGenerated)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      onPressed: _loading ? null : _generateToken,
+                      icon: _loading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.confirmation_number_outlined),
+                      label: Text(
+                          _loading ? 'Generating...' : 'Generate Token',
+                          style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF9D4EDD),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        elevation: 8,
+                      ),
+                    ),
+                  ),
+
+                // WhatsApp button (only after token generated)
+                if (_tokenGenerated) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      onPressed: _generateToken,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Regenerate Token',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(0.12),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      onPressed: _sendWhatsApp,
+                      icon: const Icon(Icons.chat_rounded),
+                      label: const Text('Send via WhatsApp',
+                          style: TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        elevation: 8,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                          context, AppRoutes.createService, (_) => false),
+                      icon: const Icon(Icons.add_circle_outline,
+                          color: Colors.white70),
+                      label: const Text('New Service',
+                          style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailsCard(Map<String, dynamic> d, String priceFormatted) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        children: [
+          _detailRow(Icons.person_outline, 'Customer', d['customerName']),
+          const Divider(color: Colors.white10, height: 20),
+          _detailRow(Icons.phone_outlined, 'Phone', d['phoneNumber']),
+          const Divider(color: Colors.white10, height: 20),
+          _detailRow(Icons.spa_outlined, 'Service', d['service']),
+          const Divider(color: Colors.white10, height: 20),
+          _detailRow(Icons.currency_rupee, 'Price', priceFormatted),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, color: const Color(0xFF9D4EDD), size: 20),
+        const SizedBox(width: 12),
+        Text(label,
+            style: const TextStyle(color: Colors.white54, fontSize: 13)),
+        const Spacer(),
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+}
