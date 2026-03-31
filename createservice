@@ -1,0 +1,275 @@
+import 'package:flutter/material.dart';
+import 'routes.dart';
+
+class CreateServiceScreen extends StatefulWidget {
+  const CreateServiceScreen({super.key});
+
+  @override
+  State<CreateServiceScreen> createState() => _CreateServiceScreenState();
+}
+
+class _CreateServiceScreenState extends State<CreateServiceScreen>
+    with SingleTickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
+  final _customerCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _serviceCtrl = TextEditingController();
+  final _priceCtrl = TextEditingController();
+  late AnimationController _animCtrl;
+  late Animation<double> _fadeAnim;
+
+  final List<String> _predefinedServices = [
+    'Haircut',
+    'Shave',
+    'Hair Color',
+    'Facial',
+    'Hair Wash',
+    'Beard Trim',
+    'Head Massage',
+    'Manicure',
+    'Pedicure',
+    'Waxing',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl =
+        AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _animCtrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    _customerCtrl.dispose();
+    _phoneCtrl.dispose();
+    _serviceCtrl.dispose();
+    _priceCtrl.dispose();
+    super.dispose();
+  }
+
+  void _navigateToToken() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pushNamed(
+      context,
+      AppRoutes.tokenPage,
+      arguments: {
+        'customerName': _customerCtrl.text.trim(),
+        'phoneNumber': _phoneCtrl.text.trim(),
+        'service': _serviceCtrl.text.trim(),
+        'price': double.parse(_priceCtrl.text.trim()),
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF0A0A1A), Color(0xFF1A1A3E), Color(0xFF2D1B69)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: _fadeAnim,
+            child: Column(
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.content_cut,
+                            color: Colors.white, size: 24),
+                      ),
+                      const SizedBox(width: 14),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('New Service',
+                              style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white)),
+                          Text('Fill customer details',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 13)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _sectionLabel('Customer Information'),
+                          const SizedBox(height: 10),
+                          _buildField(
+                            controller: _customerCtrl,
+                            label: 'Customer Name',
+                            icon: Icons.person_outline,
+                            validator: (v) =>
+                                v!.isEmpty ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildField(
+                            controller: _phoneCtrl,
+                            label: 'Phone Number',
+                            icon: Icons.phone_outlined,
+                            keyboardType: TextInputType.phone,
+                            validator: (v) =>
+                                v!.length >= 10 ? null : 'Enter valid number',
+                          ),
+                          const SizedBox(height: 20),
+                          _sectionLabel('Service Details'),
+                          const SizedBox(height: 10),
+                          // Service chips
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _predefinedServices
+                                .map((s) => GestureDetector(
+                                      onTap: () =>
+                                          setState(() => _serviceCtrl.text = s),
+                                      child: AnimatedContainer(
+                                        duration:
+                                            const Duration(milliseconds: 200),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 14, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: _serviceCtrl.text == s
+                                              ? const Color(0xFF9D4EDD)
+                                              : Colors.white.withOpacity(0.08),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: _serviceCtrl.text == s
+                                                ? const Color(0xFF9D4EDD)
+                                                : Colors.white24,
+                                          ),
+                                        ),
+                                        child: Text(s,
+                                            style: TextStyle(
+                                                color: _serviceCtrl.text == s
+                                                    ? Colors.white
+                                                    : Colors.white70,
+                                                fontSize: 13)),
+                                      ),
+                                    ))
+                                .toList(),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildField(
+                            controller: _serviceCtrl,
+                            label: 'Service (or type custom)',
+                            icon: Icons.spa_outlined,
+                            validator: (v) =>
+                                v!.isEmpty ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildField(
+                            controller: _priceCtrl,
+                            label: 'Price (₹)',
+                            icon: Icons.currency_rupee,
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              if (v!.isEmpty) return 'Required';
+                              if (double.tryParse(v) == null) {
+                                return 'Enter valid amount';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 32),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton.icon(
+                              onPressed: _navigateToToken,
+                              icon: const Icon(Icons.arrow_forward_rounded),
+                              label: const Text('Proceed to Token',
+                                  style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF9D4EDD),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16)),
+                                elevation: 8,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Text(text,
+        style: const TextStyle(
+            color: Color(0xFFCBA8FF),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.0));
+  }
+
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white54),
+        prefixIcon: Icon(icon, color: Colors.white38, size: 20),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.07),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFF9D4EDD), width: 1.5),
+        ),
+        errorStyle: const TextStyle(color: Color(0xFFFF6B6B)),
+      ),
+      validator: validator,
+    );
+  }
+}
