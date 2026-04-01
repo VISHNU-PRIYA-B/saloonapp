@@ -53,7 +53,7 @@ class _Service {
   factory _Service.fromJson(Map<String, dynamic> j) => _Service(
         id: j['id'].toString(),
         name: j['name'],
-        price: (j['price'] as num).toDouble(),
+        price: double.tryParse(j['price'].toString()) ?? 0.0,
         durationMinutes: j['durationMinutes'] ?? 30,
         category: j['category'] ?? 'General',
       );
@@ -92,9 +92,7 @@ class _ServicesPageState extends State<ServicesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return GraphQLProvider(
-      client: _client,
-      child: Scaffold(
+    return Scaffold(
         backgroundColor: _bg,
         body: SafeArea(
           child: Column(
@@ -106,7 +104,6 @@ class _ServicesPageState extends State<ServicesPage> {
             ],
           ),
         ),
-      ),
     );
   }
 
