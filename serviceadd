@@ -68,6 +68,7 @@ class ServicesPage extends StatefulWidget {
 }
 
 class _ServicesPageState extends State<ServicesPage> {
+  VoidCallback? _refetch; // ✅ VERY IMPORTANT
   static const _bg      = Color(0xFF0F0F23);
   static const _surface = Color(0xFF1A1A35);
   static const _purple  = Color(0xFF8B5CF6);
@@ -136,7 +137,7 @@ class _ServicesPageState extends State<ServicesPage> {
             ],
           ),
           GestureDetector(
-            onTap: () => _showAddSheet(context),
+            onTap: () => _showAddSheet(context, _refetch),
             child: Container(
               width: 44, height: 44,
               decoration: BoxDecoration(
@@ -214,6 +215,7 @@ class _ServicesPageState extends State<ServicesPage> {
         fetchPolicy: FetchPolicy.networkOnly,
       ),
       builder: (result, {fetchMore, refetch}) {
+        _refetch = refetch;
         if (result.isLoading) {
           return const Center(
               child: CircularProgressIndicator(color: _purple));
@@ -233,7 +235,7 @@ class _ServicesPageState extends State<ServicesPage> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           itemCount: services.length + 1,
           itemBuilder: (context, i) {
-            if (i == services.length) return _addTile(context);
+            if (i == services.length) return _addTile(context,refetch);
             final svc = services[i]; 
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
@@ -284,11 +286,11 @@ class _ServicesPageState extends State<ServicesPage> {
       },
     );
   }
-
+                                                 
   // ── Add Tile ───────────────────────────────────────────
-  Widget _addTile(BuildContext context) {
+  Widget _addTile(BuildContext context, VoidCallback? refetch) {
     return GestureDetector(
-      onTap: () => _showAddSheet(context),
+      onTap: () => _showAddSheet(context, refetch),
       child: Container(
         margin: const EdgeInsets.only(top: 4),
         padding: const EdgeInsets.symmetric(vertical: 18),
@@ -314,7 +316,7 @@ class _ServicesPageState extends State<ServicesPage> {
   }
 
   // Add Service Sheet 
-  void _showAddSheet(BuildContext context) {
+  void _showAddSheet(BuildContext context, VoidCallback? refetch) {
     _nameCtrl.clear();
     _priceCtrl.clear();
     _durationCtrl.text = '30';
@@ -333,7 +335,7 @@ class _ServicesPageState extends State<ServicesPage> {
         child: Mutation(
           options: MutationOptions(
             document: gql(_createService),
-            onCompleted: (_) => Navigator.pop(context),
+            onCompleted: (_) {Navigator.pop(context);_refetch?.call();},
           ),
           builder: (runMutation, result) => StatefulBuilder(
             builder: (ctx, setSheet) => Column(
