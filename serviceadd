@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
+import 'create_service_screen.dart';
 
 // ── GraphQL Client ──────────────────────────────────────
 final _client = ValueNotifier(GraphQLClient(
-  link: HttpLink('http://192.168.68.116:8000/graphql/'),
+  link: HttpLink('http://192.168.68.115:8000/graphql/'),
   cache: GraphQLCache(store: InMemoryStore()),
 ));
 
@@ -73,15 +74,14 @@ class _ServicesPageState extends State<ServicesPage> {
   static const _surface = Color(0xFF1A1A35);
   static const _purple  = Color(0xFF8B5CF6);
   static const _muted   = Color(0xFF9090B0);
-  static const _chipBg  = Color(0xFF252545);
+  
 
-  final List<String> _categories = ['All', 'Hair', 'Nails', 'Skin'];
-  String _selectedCategory = 'All';
+
 
   final _nameCtrl     = TextEditingController();
   final _priceCtrl    = TextEditingController();
   final _durationCtrl = TextEditingController(text: '30');
-  String _formCategory = 'Hair';
+  
 
   @override
   void dispose() {
@@ -95,16 +95,51 @@ class _ServicesPageState extends State<ServicesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
         backgroundColor: _bg,
-        body: SafeArea(
-          child: Column(
-            children: [
-              _header(context),
-              _searchBar(),
-              _categoryChips(),
-              Expanded(child: _serviceList()),
-            ],
+body: SafeArea(
+  child: Column(
+    children: [
+      _header(context),
+      _searchBar(),
+
+      Expanded(child: _serviceList()),
+
+      // 🔥 NEW BUTTON ADDED
+      Padding(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          width: double.infinity,
+          height: 55,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _purple,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const CreateServiceScreen(),
+                ),
+              );
+
+              _refetch?.call(); // refresh list after return
+            },
+            child: const Text(
+              "Create Service",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
           ),
         ),
+      ),
+    ],
+  ),
+),
     );
   }
 
@@ -174,40 +209,7 @@ class _ServicesPageState extends State<ServicesPage> {
     );
   }
 
-  // ── Category Chips ─────────────────────────────────────
-  Widget _categoryChips() {
-    return SizedBox(
-      height: 44,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _categories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final cat = _categories[i];
-          final selected = cat == _selectedCategory;
-          return GestureDetector(
-            onTap: () => setState(() => _selectedCategory = cat),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              decoration: BoxDecoration(
-                color: selected ? _purple : _chipBg,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(cat,
-                  style: TextStyle(
-                      color: selected ? Colors.white : _muted,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13)),
-            ),
-          );
-        },
-      ),
-    );
-  }
 
-  // ── Service List ───────────────────────────────────────
   Widget _serviceList() {
     return Query(
       options: QueryOptions(
@@ -233,9 +235,9 @@ class _ServicesPageState extends State<ServicesPage> {
 
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          itemCount: services.length + 1,
+          itemCount: services.length,
           itemBuilder: (context, i) {
-            if (i == services.length) return _addTile(context,refetch);
+           
             final svc = services[i]; 
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
@@ -288,33 +290,7 @@ class _ServicesPageState extends State<ServicesPage> {
   }
                                                  
   // ── Add Tile ───────────────────────────────────────────
-  Widget _addTile(BuildContext context, VoidCallback? refetch) {
-    return GestureDetector(
-      onTap: () => _showAddSheet(context, refetch),
-      child: Container(
-        margin: const EdgeInsets.only(top: 4),
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        decoration: BoxDecoration(
-          color: _purple.withOpacity(0.1),
-          border: Border.all(color: _purple.withOpacity(0.35)),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Column(
-          children: [
-            Text('+ Add new service',
-                style: TextStyle(
-                    color: _purple,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600)),
-            SizedBox(height: 4),
-            Text('e.g. Hair Spa · ₹500',
-                style: TextStyle(color: _muted, fontSize: 12)),
-          ],
-        ),
-      ),
-    );
-  }
-
+  
   // Add Service Sheet 
   void _showAddSheet(BuildContext context, VoidCallback? refetch) {
     _nameCtrl.clear();
@@ -365,19 +341,7 @@ class _ServicesPageState extends State<ServicesPage> {
                 const SizedBox(height: 12),
                 _input('Duration (min)', _durationCtrl,
                     type: TextInputType.number),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _formCategory,
-                  dropdownColor: const Color(0xFF252540),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _inputDeco('Category'),
-                  items: ['Hair', 'Nails', 'Skin', 'General']
-                      .map((c) =>
-                          DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (v) =>
-                      setSheet(() => _formCategory = v ?? 'Hair'),
-                ),
+              
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -399,7 +363,7 @@ class _ServicesPageState extends State<ServicesPage> {
                                       _priceCtrl.text) ?? 0,
                               'durationMinutes': int.tryParse(
                                       _durationCtrl.text) ?? 30,
-                              'category': _formCategory,
+                              'category': 'General',
                             });
                           },
                     child: result?.isLoading == true
